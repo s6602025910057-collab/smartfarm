@@ -1,6 +1,10 @@
 import type { MockPoint } from "@/lib/mock/sensor-data";
 
-function stats(values: number[]) {
+type Stats = { min: number; max: number; mean: number; median: number; std: number };
+
+type Row = { label: string; samples: number; values: Stats };
+
+function stats(values: number[]): Stats {
   if (!values.length) return { min: 0, max: 0, mean: 0, median: 0, std: 0 };
   const sorted = [...values].sort((a, b) => a - b);
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -16,9 +20,9 @@ function format(value: number, decimals: number) {
 export function StatisticsTable({ data, unit = "", decimals = 1, source = "Measured data" }: { data: MockPoint[]; unit?: string; decimals?: number; source?: string }) {
   const all = stats(data.map((point) => point.value));
   const recent = stats(data.slice(-8).map((point) => point.value));
-  const rows = [
-    ["All samples", data.length, all],
-    ["Recent window", Math.min(8, data.length), recent],
+  const rows: Row[] = [
+    { label: "All samples", samples: data.length, values: all },
+    { label: "Recent window", samples: Math.min(8, data.length), values: recent },
   ];
 
   return (
@@ -37,15 +41,15 @@ export function StatisticsTable({ data, unit = "", decimals = 1, source = "Measu
             </tr>
           </thead>
           <tbody>
-            {rows.map(([label, samples, values]) => (
-              <tr key={label as string} className="border-t border-line/70">
-                <td className="px-3 py-3 font-medium text-foreground">{label as string}</td>
-                <td className="px-3 py-3 text-muted">{samples as number}</td>
-                <td className="px-3 py-3 text-muted">{format(values.min, decimals)}{unit}</td>
-                <td className="px-3 py-3 text-muted">{format(values.max, decimals)}{unit}</td>
-                <td className="px-3 py-3 font-medium text-foreground">{format(values.mean, decimals)}{unit}</td>
-                <td className="px-3 py-3 text-muted">{format(values.median, decimals)}{unit}</td>
-                <td className="px-3 py-3 text-muted">{format(values.std, decimals)}{unit}</td>
+            {rows.map((row) => (
+              <tr key={row.label} className="border-t border-line/70">
+                <td className="px-3 py-3 font-medium text-foreground">{row.label}</td>
+                <td className="px-3 py-3 text-muted">{row.samples}</td>
+                <td className="px-3 py-3 text-muted">{format(row.values.min, decimals)}{unit}</td>
+                <td className="px-3 py-3 text-muted">{format(row.values.max, decimals)}{unit}</td>
+                <td className="px-3 py-3 font-medium text-foreground">{format(row.values.mean, decimals)}{unit}</td>
+                <td className="px-3 py-3 text-muted">{format(row.values.median, decimals)}{unit}</td>
+                <td className="px-3 py-3 text-muted">{format(row.values.std, decimals)}{unit}</td>
               </tr>
             ))}
           </tbody>
