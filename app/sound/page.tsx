@@ -11,11 +11,12 @@ const config: AnalyticsConfig = {
   unit: " %",
   current: "58%",
   status: "Mock data",
-  insight: "Activity is modeled as a time-varying insect acoustic index. Replace the mock series with microphone/AI classification output when the sensor pipeline is ready.",
+  insight: "Activity is modeled as a time-varying insect acoustic index. The acoustic profile below is a visual placeholder for future microphone and insect-classification data.",
   source: soundMock.source,
   series: soundMock.series,
   secondary: soundMock.secondary,
   decimals: 1,
+  visual: "acoustic",
 };
 
 export default function SoundPage() {
