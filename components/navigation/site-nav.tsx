@@ -148,20 +148,70 @@ export function SiteNav() {
       </header>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-background/95 pb-[env(safe-area-inset-bottom)] text-foreground shadow-[0_-8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl md:hidden"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-background/95 text-foreground shadow-[0_-8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl md:hidden"
         aria-label="Mobile navigation"
       >
-        <div className="mx-auto grid h-16 max-w-xl grid-cols-5 px-2">
-          {items.map((item) => {
-            const active = item.submenu ? soilActive : isActive(pathname, item.href);
+        <div className="relative">
+          {soilOpen ? (
+            <div className="absolute inset-x-3 bottom-[calc(100%+0.5rem)] z-20">
+              <div className="mx-auto max-w-xl rounded-2xl border border-line bg-surface/95 p-2 shadow-2xl backdrop-blur-xl">
+                <div className="flex items-center justify-between px-2 pb-2 pt-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Soil</div>
+                  <button
+                    type="button"
+                    onClick={() => setSoilOpen(false)}
+                    className="rounded-md px-2 py-1 text-[10px] font-medium text-muted hover:bg-muted/10 hover:text-foreground"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {items[1].submenu?.map((sub) => (
+                    <Link
+                      key={sub.href}
+                      href={sub.href}
+                      className={`rounded-xl px-2 py-2.5 text-center text-xs font-medium transition ${
+                        pathname === sub.href
+                          ? "bg-accent/10 text-accent"
+                          : "text-muted hover:bg-muted/10 hover:text-foreground"
+                      }`}
+                    >
+                      {sub.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
-            if (item.submenu) {
+          <div className="mx-auto grid h-16 max-w-xl grid-cols-5 px-2 pb-[env(safe-area-inset-bottom)]">
+            {items.map((item) => {
+              const active = item.submenu ? soilActive : isActive(pathname, item.href);
+
+              if (item.submenu) {
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => setSoilOpen((open) => !open)}
+                    aria-expanded={soilOpen}
+                    aria-label={item.label}
+                    className={`relative flex items-center justify-center transition ${
+                      active || soilOpen ? "text-accent" : "text-muted"
+                    }`}
+                  >
+                    <span className={`grid size-9 place-items-center rounded-xl ${active || soilOpen ? "bg-accent/10" : ""}`}>
+                      <NavIcon src={item.icon} className="size-5" />
+                    </span>
+                    {active ? <span className="absolute bottom-1 size-1 rounded-full bg-accent" /> : null}
+                  </button>
+                );
+              }
+
               return (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => setSoilOpen(true)}
-                  aria-expanded={soilOpen}
+                <Link
+                  key={item.href}
+                  href={item.href}
                   aria-label={item.label}
                   className={`relative flex items-center justify-center transition ${
                     active ? "text-accent" : "text-muted"
@@ -171,50 +221,11 @@ export function SiteNav() {
                     <NavIcon src={item.icon} className="size-5" />
                   </span>
                   {active ? <span className="absolute bottom-1 size-1 rounded-full bg-accent" /> : null}
-                </button>
+                </Link>
               );
-            }
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-label={item.label}
-                className={`relative flex items-center justify-center transition ${
-                  active ? "text-accent" : "text-muted"
-                }`}
-              >
-                <span className={`grid size-9 place-items-center rounded-xl ${active ? "bg-accent/10" : ""}`}>
-                  <NavIcon src={item.icon} className="size-5" />
-                </span>
-                {active ? <span className="absolute bottom-1 size-1 rounded-full bg-accent" /> : null}
-              </Link>
-            );
-          })}
-        </div>
-
-        {soilOpen ? (
-          <div className="border-t border-line bg-surface/95 px-3 pb-3 pt-2 shadow-2xl">
-            <div className="mx-auto max-w-xl rounded-xl border border-line bg-background p-2">
-              <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Soil</div>
-              <div className="grid grid-cols-4 gap-1">
-                {items[1].submenu?.map((sub) => (
-                  <Link
-                    key={sub.href}
-                    href={sub.href}
-                    className={`rounded-lg px-2 py-2 text-center text-xs font-medium transition ${
-                      pathname === sub.href
-                        ? "bg-accent/10 text-accent"
-                        : "text-muted hover:bg-muted/10 hover:text-foreground"
-                    }`}
-                  >
-                    {sub.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
+            })}
           </div>
-        ) : null}
+        </div>
       </nav>
     </>
   );
