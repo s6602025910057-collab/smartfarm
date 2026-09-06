@@ -197,6 +197,12 @@ select {
   }
 }
 
+@media (max-width: 767px) {
+  body {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .plant-visual__image,
   .plant-visual__pulse,
@@ -205,7 +211,6 @@ select {
   }
 }
 
-/* Light theme overrides for the plant visual */
 [data-theme="light"] .plant-visual {
   background:
     radial-gradient(circle at 50% 48%, rgb(16 185 129 / calc(var(--plant-glow) * 0.7)) 0, transparent 42%),
