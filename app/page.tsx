@@ -1,4 +1,4 @@
-import { SmartFarmDashboard } from "@/components/dashboard/smartfarm-dashboard";
+import { SmartFarmDashboardHome } from "@/components/dashboard/smartfarm-dashboard-home";
 import { getLatestReadings } from "@/lib/supabase/rest";
 import type { Reading } from "@/types/readings";
 
@@ -13,5 +13,5 @@ export default async function Home() {
     // The dashboard still renders its empty/error state when env or API access is unavailable.
   }
 
-  return <SmartFarmDashboard initialReadings={initialReadings} />;
+  return <SmartFarmDashboardHome initialReadings={initialReadings} />;
 }
