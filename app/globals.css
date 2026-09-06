@@ -31,3 +31,142 @@ button,
 select {
   font: inherit;
 }
+
+@keyframes plant-breathe {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  50% {
+    transform: scale(1.015) translateY(-1px);
+  }
+}
+
+@keyframes plant-sway {
+  0%,
+  100% {
+    transform: rotate(-0.45deg) translateX(0);
+  }
+  50% {
+    transform: rotate(0.45deg) translateX(1px);
+  }
+}
+
+@keyframes plant-pulse {
+  0%,
+  100% {
+    transform: scale(0.94);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.12;
+  }
+}
+
+@keyframes plant-chip-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.plant-visual {
+  position: relative;
+  min-height: 280px;
+  overflow: hidden;
+  border: 1px solid rgb(30 41 59 / 0.85);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 50% 48%, rgb(16 185 129 / calc(var(--plant-glow) * 1.2)) 0, transparent 42%),
+    linear-gradient(180deg, rgb(15 23 42 / 0.72), rgb(2 6 23 / 0.96));
+}
+
+.plant-visual__halo {
+  position: absolute;
+  inset: 12% 14% 8%;
+  border-radius: 50%;
+  background: rgb(16 185 129 / var(--plant-glow));
+  filter: blur(30px);
+  pointer-events: none;
+}
+
+.plant-visual__stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.plant-visual__image {
+  width: min(100%, 780px);
+  height: 100%;
+  object-fit: cover;
+  opacity: var(--plant-opacity);
+  transform-origin: 50% 72%;
+  animation:
+    plant-breathe var(--plant-breathe) ease-in-out infinite,
+    plant-sway var(--plant-sway) ease-in-out infinite;
+  will-change: transform;
+}
+
+.plant-visual__pulse {
+  position: absolute;
+  width: 34%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid rgb(16 185 129 / 0.18);
+  animation: plant-pulse var(--plant-breathe) ease-in-out infinite;
+  pointer-events: none;
+}
+
+.plant-visual__signals {
+  position: absolute;
+  inset: auto 12px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.plant-visual__signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid rgb(30 41 59 / 0.9);
+  border-radius: 6px;
+  background: rgb(2 6 23 / 0.72);
+  color: rgb(203 213 225 / 0.92);
+  font-size: 10px;
+  line-height: 1;
+  backdrop-filter: blur(10px);
+  animation: plant-chip-float 3.4s ease-in-out infinite;
+}
+
+.plant-visual__signal img {
+  width: 14px;
+  height: 14px;
+}
+
+.plant-visual__signal--muted {
+  color: rgb(100 116 139 / 0.95);
+  animation-delay: 300ms;
+}
+
+@media (min-width: 640px) {
+  .plant-visual {
+    min-height: 320px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plant-visual__image,
+  .plant-visual__pulse,
+  .plant-visual__signal {
+    animation: none;
+  }
+}
