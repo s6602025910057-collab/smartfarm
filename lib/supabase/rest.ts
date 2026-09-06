@@ -14,10 +14,14 @@ const READING_COLUMNS = [
 ].join(",");
 
 function getConfig() {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url =
+    process.env.SUPABASE_URL ??
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
     process.env.SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.SUPABASE_ANON_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
     return null;
@@ -49,7 +53,7 @@ export async function getReadings(options?: {
     params.set("received_at", `gte.${since.toISOString()}`);
   }
 
-  const response = await fetch(`${config.url}/rest/v1/readings?${params}`, {
+  const response = await fetch(`${config.url}/rest/v1/readings?${params.toString()}`, {
     headers: {
       apikey: config.key,
       Authorization: `Bearer ${config.key}`,
