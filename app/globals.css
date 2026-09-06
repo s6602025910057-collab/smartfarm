@@ -3,11 +3,31 @@
 :root {
   --background: #020617;
   --foreground: #f8fafc;
+  --surface: #0f172a;
+  --line: #1e293b;
+  --muted: #64748b;
+  --text-soft: #cbd5e1;
+  --accent: #10b981;
+}
+
+[data-theme="light"] {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --surface: #ffffff;
+  --line: #e2e8f0;
+  --muted: #64748b;
+  --text-soft: #334155;
+  --accent: #059669;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-soft: var(--text-soft);
+  --color-accent: var(--accent);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -18,6 +38,11 @@
 
 html {
   background: var(--background);
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
 }
 
 body {
@@ -76,9 +101,9 @@ select {
 
 .plant-visual {
   position: relative;
-  min-height: 280px;
+  min-height: clamp(220px, 42vw, 320px);
   overflow: hidden;
-  border: 1px solid rgb(30 41 59 / 0.85);
+  border: 1px solid var(--line);
   border-radius: 10px;
   background:
     radial-gradient(circle at 50% 48%, rgb(16 185 129 / calc(var(--plant-glow) * 1.2)) 0, transparent 42%),
@@ -102,9 +127,11 @@ select {
 }
 
 .plant-visual__image {
-  width: min(100%, 780px);
+  width: 100%;
   height: 100%;
+  max-height: min(52vh, 520px);
   object-fit: cover;
+  object-position: center 62%;
   opacity: var(--plant-opacity);
   transform-origin: 50% 72%;
   animation:
@@ -157,9 +184,16 @@ select {
   animation-delay: 300ms;
 }
 
+@media (max-width: 639px) {
+  .plant-visual__image {
+    object-fit: contain;
+    object-position: center bottom;
+  }
+}
+
 @media (min-width: 640px) {
   .plant-visual {
-    min-height: 320px;
+    min-height: clamp(280px, 30vw, 380px);
   }
 }
 
@@ -169,4 +203,29 @@ select {
   .plant-visual__signal {
     animation: none;
   }
+}
+
+/* Light theme overrides for the plant visual */
+[data-theme="light"] .plant-visual {
+  background:
+    radial-gradient(circle at 50% 48%, rgb(16 185 129 / calc(var(--plant-glow) * 0.7)) 0, transparent 42%),
+    linear-gradient(180deg, rgb(241 245 249 / 0.94), rgb(226 232 240 / 0.98));
+}
+
+[data-theme="light"] .plant-visual__halo {
+  filter: blur(34px);
+}
+
+[data-theme="light"] .plant-visual__pulse {
+  border-color: rgb(5 150 105 / 0.25);
+}
+
+[data-theme="light"] .plant-visual__signal {
+  border-color: var(--line);
+  background: rgb(255 255 255 / 0.82);
+  color: var(--text-soft);
+}
+
+[data-theme="light"] .plant-visual__signal--muted {
+  color: var(--muted);
 }

@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PlantHealthVisual } from "@/components/dashboard/plant-health-visual";
 import type { Reading, ReadingRange } from "@/types/readings";
 
 type DashboardProps = { initialReadings: Reading[] };
+
+const ALL_NODES = "all";
+type NodeSelection = number | typeof ALL_NODES;
+
+function formatNodeLabel(nodeId: NodeSelection) {
+  return nodeId === ALL_NODES ? "All" : `Node ${String(nodeId).padStart(2, "0")}`;
+}
 
 type RangeOption = { label: string; value: ReadingRange };
 
@@ -23,6 +31,59 @@ const icons = {
   water: "https://www.figma.com/api/mcp/asset/4f30ae78-2a7e-4b84-94de-4dc2784bd857.svg",
   rain: "https://www.figma.com/api/mcp/asset/2e5b1317-7cf2-4784-8da3-ceca4c6c28da.svg",
 };
+
+type MetricKey = "soil1" | "soil2" | "rssi" | "snr";
+
+type MetricConfig = {
+  label: string;
+  detail: string;
+  icon: string;
+  unit: string;
+  color: string;
+  decimals: number;
+  field: (reading: Reading) => number;
+};
+
+const metricConfigs: Record<MetricKey, MetricConfig> = {
+  soil1: {
+    label: "Soil 1",
+    detail: "Raw ADC",
+    icon: icons.soil,
+    unit: "",
+    color: "#10b981",
+    decimals: 0,
+    field: (r) => Number(r.soil1_raw),
+  },
+  soil2: {
+    label: "Soil 2",
+    detail: "Raw ADC",
+    icon: icons.soil,
+    unit: "",
+    color: "#0ea5e9",
+    decimals: 0,
+    field: (r) => Number(r.soil2_raw),
+  },
+  rssi: {
+    label: "RSSI",
+    detail: "LoRa signal",
+    icon: icons.light,
+    unit: " dBm",
+    color: "#a78bfa",
+    decimals: 0,
+    field: (r) => Number(r.rssi_dbm),
+  },
+  snr: {
+    label: "SNR",
+    detail: "Link quality",
+    icon: icons.water,
+    unit: " dB",
+    color: "#f59e0b",
+    decimals: 2,
+    field: (r) => Number(r.snr_db),
+  },
+};
+
+const metricOrder: MetricKey[] = ["soil1", "soil2", "rssi", "snr"];
 
 function formatTime(value?: string) {
   if (!value) return "—";
@@ -49,70 +110,153 @@ function isOnline(value?: string) {
   return Date.now() - new Date(value).getTime() <= 10 * 60 * 1000;
 }
 
-function buildPoints(readings: Reading[]) {
+type ChartPoint = {
+  x: number;
+  y: number;
+  value: number;
+  reading: Reading;
+};
+
+function buildPoints(readings: Reading[], field: (r: Reading) => number): ChartPoint[] {
   const sorted = [...readings].sort(
     (a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime(),
   );
 
-  if (sorted.length <= 1) return sorted.map(() => ({ x: 50, y: 50 }));
+  if (!sorted.length) return [];
+  if (sorted.length === 1) {
+    const v = field(sorted[0]) || 0;
+    return [{ x: 50, y: 50, value: v, reading: sorted[0] }];
+  }
 
-  const values = sorted.map((item) => Number(item.avg_raw) || 0);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const values = sorted.map(field);
+  const finite = values.filter((v) => Number.isFinite(v));
+  const min = finite.length ? Math.min(...finite) : 0;
+  const max = finite.length ? Math.max(...finite) : 0;
   const spread = max - min || 1;
 
-  return sorted.map((item, index) => ({
-    x: (index / (sorted.length - 1)) * 100,
-    y: 88 - ((Number(item.avg_raw) - min) / spread) * 68,
-  }));
+  return sorted.map((reading, index) => {
+    const value = field(reading) || 0;
+    return {
+      x: (index / (sorted.length - 1)) * 100,
+      y: 88 - ((value - min) / spread) * 68,
+      value,
+      reading,
+    };
+  });
 }
 
-function TrendChart({ readings }: { readings: Reading[] }) {
-  const points = buildPoints(readings);
-  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
+function TrendChart({
+  readings,
+  metric,
+}: {
+  readings: Reading[];
+  metric: MetricKey;
+}) {
+  const config = metricConfigs[metric];
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [hover, setHover] = useState<{ point: ChartPoint; px: number; py: number } | null>(null);
+
+  const points = useMemo(() => buildPoints(readings, config.field), [readings, config]);
+  const line = points.map((p) => `${p.x},${p.y}`).join(" ");
   const area = points.length ? `0,100 ${line} 100,100` : "0,100 100,100";
 
-  return (
-    <div className="relative h-52 w-full overflow-hidden rounded-md border border-slate-800/80 bg-slate-950/50 px-2 pt-4 sm:h-56">
-      <div className="pointer-events-none absolute inset-x-2 top-[24%] border-t border-slate-800/80" />
-      <div className="pointer-events-none absolute inset-x-2 top-1/2 border-t border-slate-800/80" />
-      <div className="pointer-events-none absolute inset-x-2 top-[76%] border-t border-slate-800/80" />
+  function handleMove(event: React.MouseEvent<SVGSVGElement>) {
+    if (!points.length || !svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const index = Math.round(ratio * (points.length - 1));
+    const point = points[index];
+    setHover({
+      point,
+      px: point.x * (rect.width / 100),
+      py: point.y * (rect.height / 100),
+    });
+  }
 
-      {readings.length > 0 ? (
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          className="absolute inset-x-2 top-3 h-40 w-[calc(100%-1rem)] sm:h-44"
-          aria-hidden="true"
-        >
-          <polyline points={area} fill="rgba(16,185,129,0.08)" stroke="none" />
-          <polyline
-            points={line}
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="1.5"
-            vectorEffect="non-scaling-stroke"
-          />
-          {points.map((point, index) => (
-            <circle
-              key={`${point.x}-${index}`}
-              cx={point.x}
-              cy={point.y}
-              r="1.15"
-              fill="#10b981"
+  const hoverValue = hover
+    ? `${hover.point.value.toFixed(config.decimals)}${config.unit}`
+    : "";
+
+  return (
+    <div className="relative h-52 w-full overflow-hidden rounded-md border border-line bg-muted/5 px-2 pt-4 sm:h-56">
+      <div className="pointer-events-none absolute inset-x-2 top-[24%] border-t border-line/70" />
+      <div className="pointer-events-none absolute inset-x-2 top-1/2 border-t border-line/70" />
+      <div className="pointer-events-none absolute inset-x-2 top-[76%] border-t border-line/70" />
+
+      {points.length > 0 ? (
+        <>
+          <svg
+            ref={svgRef}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="absolute inset-x-2 top-3 h-40 w-[calc(100%-1rem)] cursor-crosshair sm:h-44"
+            aria-label={`${config.label} trend chart`}
+            onMouseMove={handleMove}
+            onMouseLeave={() => setHover(null)}
+          >
+            <polyline points={area} fill={`${config.color}14`} stroke="none" />
+            <polyline
+              points={line}
+              fill="none"
+              stroke={config.color}
+              strokeWidth="1.5"
               vectorEffect="non-scaling-stroke"
             />
-          ))}
-        </svg>
+            {hover && (
+              <line
+                x1={hover.point.x}
+                y1="0"
+                x2={hover.point.x}
+                y2="100"
+                stroke={config.color}
+                strokeWidth="1"
+                strokeDasharray="4 3"
+                vectorEffect="non-scaling-stroke"
+                opacity="0.6"
+              />
+            )}
+            {points.map((point, index) => (
+              <circle
+                key={`${point.x}-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r={hover?.point === point ? "2" : "1.15"}
+                fill={config.color}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
+
+          {hover && (
+            <div
+              className="pointer-events-none absolute z-10 max-w-[220px] rounded-md border border-line bg-surface/95 px-2.5 py-1.5 text-[10px] leading-4 shadow-lg backdrop-blur"
+              style={{
+                left: `clamp(0.5rem, ${hover.px}px - 60px, calc(100% - 11rem))`,
+                top: `clamp(0.25rem, ${hover.py}px - 52px, 55%)`,
+              }}
+            >
+              <div className="font-semibold text-foreground">
+                {hoverValue}
+                <span className="ml-1 font-normal text-muted">{config.label}</span>
+              </div>
+              <div className="mt-0.5 text-muted">
+                {formatTime(hover.point.reading.received_at)}
+                {hover.point.reading.node_id !== undefined && (
+                  <span className="ml-1">· node {hover.point.reading.node_id}</span>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       ) : (
-        <div className="flex h-40 items-center justify-center px-4 text-center text-xs text-slate-500 sm:h-44">
+        <div className="flex h-40 items-center justify-center px-4 text-center text-xs text-muted sm:h-44">
           No readings in this time window
         </div>
       )}
 
-      <div className="absolute inset-x-2 bottom-3 flex justify-between text-[10px] text-slate-500">
+      <div className="absolute inset-x-2 bottom-3 flex justify-between text-[10px] text-muted">
         <span>Start</span>
-        <span>{readings.length} samples</span>
+        <span>{points.length} samples</span>
         <span>Now</span>
       </div>
     </div>
@@ -124,36 +268,54 @@ function Metric({
   label,
   value,
   detail,
+  active,
+  color,
+  onSelect,
 }: {
   icon: string;
   label: string;
   value: string;
   detail: string;
+  active: boolean;
+  color: string;
+  onSelect: () => void;
 }) {
   return (
-    <div className="group rounded-lg border border-slate-800 bg-slate-900/60 p-3.5 transition-colors hover:border-slate-700 hover:bg-slate-900">
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={active}
+      className={`group rounded-lg border p-3.5 text-left transition-colors ${
+        active
+          ? "border-transparent bg-surface"
+          : "border-line bg-surface/60 hover:bg-surface"
+      }`}
+      style={active ? { boxShadow: `inset 0 0 0 1.5px ${color}` } : undefined}
+    >
       <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-          <span className="grid size-5 place-items-center rounded-md bg-slate-950/70 ring-1 ring-inset ring-slate-800">
+        <span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+          <span className="grid size-5 place-items-center rounded-md bg-muted/10 ring-1 ring-inset ring-line">
             <img src={icon} alt="" className="size-3.5" />
           </span>
           {label}
         </span>
-        <span className="size-1.5 rounded-full bg-slate-700 transition-colors group-hover:bg-emerald-400" />
+        <span
+          className="size-1.5 rounded-full"
+          style={{ backgroundColor: active ? color : "var(--line)" }}
+        />
       </div>
-      <div className="mt-3 min-w-0 truncate text-[15px] font-semibold text-slate-100 sm:text-base">{value}</div>
-      <div className="mt-1 text-[11px] leading-4 text-slate-500">{detail}</div>
-    </div>
+      <div className="mt-3 min-w-0 truncate text-[15px] font-semibold text-foreground sm:text-base">
+        {value}
+      </div>
+      <div className="mt-1 text-[11px] leading-4 text-muted">{detail}</div>
+    </button>
   );
 }
 
 export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
-  const [nodeId, setNodeId] = useState(() =>
-    initialReadings.some((reading) => reading.node_id === 1)
-      ? 1
-      : initialReadings[0]?.node_id ?? 1,
-  );
+  const [nodeId, setNodeId] = useState<NodeSelection>(ALL_NODES);
   const [range, setRange] = useState<ReadingRange>(168);
+  const [metric, setMetric] = useState<MetricKey>("soil1");
   const [readings, setReadings] = useState<Reading[]>(initialReadings);
   const [latestReading, setLatestReading] = useState<Reading | undefined>(initialReadings[0]);
   const [loading, setLoading] = useState(false);
@@ -166,8 +328,13 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
 
   const latest = latestReading;
   const online = isOnline(latest?.received_at);
-  const avg = latest ? Number(latest.avg_raw).toFixed(1) : "—";
+  const activeConfig = metricConfigs[metric];
+  const latestValue = latest ? activeConfig.field(latest) : NaN;
+  const avg = Number.isFinite(latestValue)
+    ? latestValue.toFixed(activeConfig.decimals)
+    : "—";
   const lastUpdate = formatAge(latest?.received_at);
+  const nodeLabel = formatNodeLabel(nodeId);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,7 +343,8 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
       setLoading(true);
       setError("");
       try {
-        const response = await fetch(`/api/readings?nodeId=${nodeId}&hours=${range}&limit=100`, {
+        const nodeParam = nodeId === ALL_NODES ? "" : `nodeId=${nodeId}&`;
+        const response = await fetch(`/api/readings?${nodeParam}hours=${range}&limit=100`, {
           cache: "no-store",
         });
         if (!response.ok) throw new Error("Unable to load readings");
@@ -203,7 +371,8 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
 
     async function refreshLatest() {
       try {
-        const response = await fetch(`/api/readings?nodeId=${nodeId}&limit=1`, {
+        const nodeParam = nodeId === ALL_NODES ? "" : `nodeId=${nodeId}&`;
+        const response = await fetch(`/api/readings?${nodeParam}limit=1`, {
           cache: "no-store",
         });
         if (!response.ok) return;
@@ -223,59 +392,68 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
   }, [nodeId]);
 
   return (
-    <main className="min-h-screen bg-[#020617] text-slate-100">
+    <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-7xl px-3 pb-8 pt-3 sm:px-5 sm:pb-12 sm:pt-5 lg:px-8">
-        <header className="sticky top-0 z-20 -mx-3 mb-3 border-b border-slate-800/80 bg-[#020617]/95 px-3 py-3 backdrop-blur sm:static sm:mx-0 sm:border-b-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-0">
+        <header className="sticky top-0 z-20 -mx-3 mb-3 border-b border-line/80 bg-background/95 px-3 py-3 backdrop-blur sm:static sm:mx-0 sm:border-b-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-0">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="grid size-7 shrink-0 place-items-center rounded-md bg-emerald-400/10 ring-1 ring-inset ring-emerald-400/20">
+                <span className="grid size-7 shrink-0 place-items-center rounded-md bg-accent/10 ring-1 ring-inset ring-accent/20">
                   <img src={icons.soil} alt="" className="size-4" />
                 </span>
-                <p className="truncate text-sm font-semibold tracking-tight text-white sm:text-base">SmartFarm</p>
+                <p className="truncate text-sm font-semibold tracking-tight text-foreground sm:text-base">SmartFarm</p>
               </div>
-              <p className="mt-1 truncate pl-9 text-[11px] text-slate-500 sm:text-xs">Field monitoring · Node {String(nodeId).padStart(2, "0")}</p>
+              <p className="mt-1 truncate pl-9 text-[11px] text-muted sm:text-xs">
+                Field monitoring · {nodeLabel}
+              </p>
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              <label className="hidden items-center gap-2 rounded-md border border-slate-800 bg-slate-900/80 px-2.5 py-2 text-[11px] text-slate-500 sm:flex">
+              <label className="hidden items-center gap-2 rounded-md border border-line bg-surface/80 px-2.5 py-2 text-[11px] text-muted sm:flex">
                 Node
                 <select
                   value={nodeId}
-                  onChange={(event) => setNodeId(Number(event.target.value))}
-                  className="bg-transparent font-semibold text-slate-200 outline-none"
+                  onChange={(event) =>
+                    setNodeId(
+                      event.target.value === ALL_NODES
+                        ? ALL_NODES
+                        : Number(event.target.value),
+                    )
+                  }
+                  className="bg-transparent font-semibold text-foreground outline-none"
                 >
-                  {nodes.length ? (
-                    nodes.map((node) => (
-                      <option key={node} value={node}>
-                        #{String(node).padStart(2, "0")}
-                      </option>
-                    ))
-                  ) : (
-                    <option value={1}>#01</option>
-                  )}
+                  <option value={ALL_NODES}>All</option>
+                  {nodes.map((node) => (
+                    <option key={node} value={node}>
+                      #{String(node).padStart(2, "0")}
+                    </option>
+                  ))}
                 </select>
               </label>
               <Badge tone={online ? "success" : "warning"}>{online ? "Online" : "Offline"}</Badge>
+              <ThemeToggle />
             </div>
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-2 sm:hidden">
-            <span className="text-[10px] text-slate-500">Node</span>
+            <span className="text-[10px] text-muted">Node</span>
             <select
               value={nodeId}
-              onChange={(event) => setNodeId(Number(event.target.value))}
-              className="rounded-md border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 outline-none"
+              onChange={(event) =>
+                setNodeId(
+                  event.target.value === ALL_NODES
+                    ? ALL_NODES
+                    : Number(event.target.value),
+                )
+              }
+              className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[11px] font-semibold text-foreground outline-none"
             >
-              {nodes.length ? (
-                nodes.map((node) => (
-                  <option key={node} value={node}>
-                    #{String(node).padStart(2, "0")}
-                  </option>
-                ))
-              ) : (
-                <option value={1}>#01</option>
-              )}
+              <option value={ALL_NODES}>All</option>
+              {nodes.map((node) => (
+                <option key={node} value={node}>
+                  #{String(node).padStart(2, "0")}
+                </option>
+              ))}
             </select>
           </div>
         </header>
@@ -289,13 +467,15 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
                     <span className="grid size-7 place-items-center rounded-md bg-sky-400/10 ring-1 ring-inset ring-sky-400/10">
                       <img src={icons.soil} alt="" className="size-4" />
                     </span>
-                    <p className="text-xs font-medium text-slate-400">Soil signal</p>
+                    <p className="text-xs font-medium text-muted">Soil signal</p>
                   </div>
-                  <div className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">{avg}</div>
-                  <p className="mt-1 text-[11px] text-slate-500 sm:text-xs">Average raw ADC · latest sample</p>
+                  <div className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{avg}</div>
+                  <p className="mt-1 text-[11px] text-muted sm:text-xs">
+                    {activeConfig.label} · latest sample
+                  </p>
                 </div>
-                <div className="text-right text-[10px] text-slate-500">
-                  <div>Node {String(nodeId).padStart(2, "0")}</div>
+                <div className="text-right text-[10px] text-muted">
+                  <div>{nodeLabel}</div>
                   <div className="mt-1">{lastUpdate}</div>
                 </div>
               </div>
@@ -309,25 +489,25 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs font-medium text-slate-400">Node health</p>
-                  <h2 className="mt-1 text-sm font-semibold text-white">Connection & sample</h2>
+                  <p className="text-xs font-medium text-muted">Node health</p>
+                  <h2 className="mt-1 text-sm font-semibold text-foreground">Connection & sample</h2>
                 </div>
                 <Badge tone={online ? "success" : "warning"}>{online ? "Healthy" : "Stale"}</Badge>
               </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-3 text-xs">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <span className="text-slate-500">Received</span>
-                  <span className="font-medium text-slate-200">{formatTime(latest?.received_at)}</span>
+                <div className="flex items-center justify-between border-b border-line pb-3">
+                  <span className="text-muted">Received</span>
+                  <span className="font-medium text-foreground">{formatTime(latest?.received_at)}</span>
                 </div>
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <span className="text-slate-500">Packets</span>
-                  <span className="font-medium text-slate-200">{latest?.packet_count ?? "—"}</span>
+                <div className="flex items-center justify-between border-b border-line pb-3">
+                  <span className="text-muted">Packets</span>
+                  <span className="font-medium text-foreground">{latest?.packet_count ?? "—"}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Visible samples</span>
-                  <span className="font-medium text-slate-200">{readings.length}</span>
+                  <span className="text-muted">Visible samples</span>
+                  <span className="font-medium text-foreground">{readings.length}</span>
                 </div>
               </div>
             </CardContent>
@@ -335,23 +515,37 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
         </section>
 
         <section className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3 lg:gap-4">
-          <Metric icon={icons.soil} label="Soil 1" value={latest ? String(latest.soil1_raw) : "—"} detail="Raw ADC" />
-          <Metric icon={icons.soil} label="Soil 2" value={latest ? String(latest.soil2_raw) : "—"} detail="Raw ADC" />
-          <Metric icon={icons.light} label="RSSI" value={latest ? `${latest.rssi_dbm} dBm` : "—"} detail="LoRa signal" />
-          <Metric icon={icons.water} label="SNR" value={latest ? `${latest.snr_db} dB` : "—"} detail="Link quality" />
+          {metricOrder.map((key) => {
+            const config = metricConfigs[key];
+            const value = latest ? config.field(latest) : NaN;
+            return (
+              <Metric
+                key={key}
+                icon={config.icon}
+                label={config.label}
+                value={Number.isFinite(value) ? `${value.toFixed(config.decimals)}${config.unit}` : "—"}
+                detail={config.detail}
+                active={metric === key}
+                color={config.color}
+                onSelect={() => setMetric(key)}
+              />
+            );
+          })}
         </section>
 
         <Card className="mt-3 sm:mt-4">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-medium text-slate-400">Sensor analytics</p>
+                <p className="text-xs font-medium text-muted">Sensor analytics</p>
                 <div className="mt-1 flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-white">Average soil signal</h2>
-                  {loading ? <span className="text-[10px] text-slate-500">Updating…</span> : null}
+                  <h2 className="text-sm font-semibold text-foreground">
+                    {activeConfig.label} trend
+                  </h2>
+                  {loading ? <span className="text-[10px] text-muted">Updating…</span> : null}
                 </div>
               </div>
-              <div className="grid grid-cols-4 rounded-md border border-slate-800 bg-slate-950/50 p-0.5 sm:w-auto">
+              <div className="grid grid-cols-4 rounded-md border border-line bg-muted/5 p-0.5 sm:w-auto">
                 {ranges.map((item) => (
                   <button
                     key={item.value}
@@ -359,8 +553,8 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
                     onClick={() => setRange(item.value)}
                     className={`rounded px-2.5 py-1.5 text-[10px] font-semibold transition ${
                       range === item.value
-                        ? "bg-slate-800 text-white"
-                        : "text-slate-500 hover:text-slate-300"
+                        ? "bg-muted/20 text-foreground"
+                        : "text-muted hover:text-foreground"
                     }`}
                   >
                     {item.label}
@@ -370,9 +564,9 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
             </div>
           </CardHeader>
           <CardContent>
-            {error ? <p className="mb-3 text-xs text-amber-400">{error}</p> : null}
-            <TrendChart readings={readings} />
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+            {error ? <p className="mb-3 text-xs text-amber-500">{error}</p> : null}
+            <TrendChart readings={readings} metric={metric} />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-muted">
               <span>Source: public.readings</span>
               <span>Last received {formatTime(latest?.received_at)}</span>
             </div>
@@ -380,21 +574,21 @@ export function SmartFarmDashboard({ initialReadings }: DashboardProps) {
         </Card>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:hidden">
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
+          <div className="rounded-lg border border-line bg-surface/40 p-3.5">
+            <div className="flex items-center gap-2 text-xs font-medium text-soft">
               <img src={icons.rain} alt="" className="size-4" />
               Environment
             </div>
-            <p className="mt-2 text-[11px] leading-5 text-slate-500">
+            <p className="mt-2 text-[11px] leading-5 text-muted">
               Rainfall and light sensors will appear here when their fields are added to public.readings.
             </p>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
+          <div className="rounded-lg border border-line bg-surface/40 p-3.5">
+            <div className="flex items-center gap-2 text-xs font-medium text-soft">
               <img src={icons.light} alt="" className="size-4" />
               Plant response
             </div>
-            <p className="mt-2 text-[11px] leading-5 text-slate-500">
+            <p className="mt-2 text-[11px] leading-5 text-muted">
               The plant animation reacts to the current soil signal and connection quality.
             </p>
           </div>
