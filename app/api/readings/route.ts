@@ -8,14 +8,20 @@ export async function GET(request: Request) {
   const limitParam = url.searchParams.get("limit");
 
   const nodeId = nodeParam ? Number(nodeParam) : undefined;
-  const hours = hoursParam ? Number(hoursParam) : 24;
+  const hours = hoursParam ? Number(hoursParam) : undefined;
   const limit = limitParam ? Number(limitParam) : 100;
 
   if (nodeId !== undefined && (!Number.isInteger(nodeId) || nodeId < 1)) {
     return NextResponse.json({ error: "Invalid nodeId" }, { status: 400 });
   }
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24 * 31) {
+  if (
+    hours !== undefined &&
+    (!Number.isFinite(hours) || hours <= 0 || hours > 24 * 31)
+  ) {
     return NextResponse.json({ error: "Invalid hours" }, { status: 400 });
+  }
+  if (!Number.isFinite(limit) || limit < 1 || limit > 500) {
+    return NextResponse.json({ error: "Invalid limit" }, { status: 400 });
   }
 
   try {
